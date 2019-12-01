@@ -1,0 +1,13 @@
+# Byte-compiled / optimized / DLL files
+__pycache__
+
+# Data files
+*.pkl
+*.sqlite
+tokens.py
+
+# vscode
+.vscode
+
+# macOS
+.DS_Store
