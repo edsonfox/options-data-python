@@ -73,6 +73,11 @@ def get_data(symbol):
 symbols = [x for x in all_symbols if x not in excluded_symbols]
 
 for symbol in symbols:
+    data_date_ymd = datetime.now().strftime("%Y%m%d")
+
+    # with open(symbol + "_" + data_date_ymd + '_data.pkl', 'rb') as p_data:
+    #     data = pickle.load(p_data)
+
     if [i for i in os.listdir(".") if i.startswith(symbol + "_")]:
         print(symbol + " already present, skipping")
         continue
@@ -84,9 +89,8 @@ for symbol in symbols:
         continue
 
     underlying_symbol = data['symbol']
-    underlying_price = data['underlying']["mark"]
-    quote_time = datetime.fromtimestamp(data['underlying']["quoteTime"]/1000)
-    data_date = quote_time.strftime("%m/%d/%Y")  # MM/DD/YYYY
+    underlying_price = data['underlying']["last"]
+    data_date = datetime.now().strftime("%m/%d/%Y")  # MM/DD/YYYY
     # these are for stock quotes table
     quote_date = data_date
     open_price = data["underlying"]["openPrice"]
@@ -96,11 +100,8 @@ for symbol in symbols:
     stock_volume = data["underlying"]["totalVolume"]
     adjusted_close = close_price  # need to find another source?
 
-    data_date_ymd = quote_time.strftime("%Y%m%d")
     with open(symbol + "_" + data_date_ymd + '_data.pkl', 'wb') as p_data:
         pickle.dump(data, p_data)
-    # with open('tsla_data.pkl', 'rb') as p_data:
-    #     data = pickle.load(p_data)
 
     for data_key in ("putExpDateMap", "callExpDateMap"):
         for date in data[data_key]:
