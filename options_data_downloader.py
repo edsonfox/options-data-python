@@ -13,13 +13,15 @@ import requests
 # External dependencies
 
 # Application-specific imports
-from symbols import ALL_SYMBOLS, EXCLUDED_SYMBOLS
 from tokens import API_KEY
 
 
 # Constants
 DB_URL = "./options-data.sqlite"
 TOS_OPTION_CHAIN_API_URL = "https://api.tdameritrade.com/v1/marketdata/chains"
+CBOE_SYMBOLS_URL = (
+    "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
+)
 
 
 class OptionsDataDownloader:
@@ -90,15 +92,20 @@ class OptionsDataDownloader:
     def get_option_chain_data(self, symbol: str) -> Dict:
         retries = 60
         while retries:
-            response = self.session.get(
-                TOS_OPTION_CHAIN_API_URL
-                + "?apikey="
-                + API_KEY
-                + "&symbol="
-                + symbol
-                + "&strikeCount=512&includeQuotes=TRUE",
-                timeout=32,
-            )
+            try:
+                response = self.session.get(
+                    TOS_OPTION_CHAIN_API_URL
+                    + "?apikey="
+                    + API_KEY
+                    + "&symbol="
+                    + symbol
+                    + "&strikeCount=512&includeQuotes=TRUE",
+                    timeout=32,
+                )
+            except ConnectionError as error:
+                logging.error("Failed getting option chain for %s: %s", symbol, error)
+                retries = retries - 1
+                time.sleep(2)
             data = response.json()
             try:
                 if data["status"]:
@@ -110,9 +117,30 @@ class OptionsDataDownloader:
                     time.sleep(2)
 
 
+def get_symbols() -> List[str]:
+    rows = requests.get(CBOE_SYMBOLS_URL).text.splitlines()
+    symbols = []
+    for row in rows:
+        try:
+            symbol_candidate = row.split('","')[1]
+        except IndexError:
+            logging.info("Row is not parsable: %s", row)
+            continue
+        if "#" not in symbol_candidate:
+            symbols.append(symbol_candidate)
+    symbols = list(set(symbols))
+    symbols.sort()
+    logging.info("Got %s symbols", len(symbols))
+    if len(symbols) < 9000:
+        raise "Too few symbols. You should check what's going on"
+    return symbols
+
+
 def main():
-    symbols = [x for x in ALL_SYMBOLS if x not in EXCLUDED_SYMBOLS]
+    symbols = get_symbols()
     options_data_downloader = OptionsDataDownloader()
+    options_data_downloader.get_and_store_data(symbols)
+    # Do it again in case some symbols weren't downloaded
     options_data_downloader.get_and_store_data(symbols)
 
 
