@@ -92,15 +92,20 @@ class OptionsDataDownloader:
     def get_option_chain_data(self, symbol: str) -> Dict:
         retries = 60
         while retries:
-            response = self.session.get(
-                TOS_OPTION_CHAIN_API_URL
-                + "?apikey="
-                + API_KEY
-                + "&symbol="
-                + symbol
-                + "&strikeCount=512&includeQuotes=TRUE",
-                timeout=32,
-            )
+            try:
+                response = self.session.get(
+                    TOS_OPTION_CHAIN_API_URL
+                    + "?apikey="
+                    + API_KEY
+                    + "&symbol="
+                    + symbol
+                    + "&strikeCount=512&includeQuotes=TRUE",
+                    timeout=32,
+                )
+            except ConnectionError as error:
+                logging.error("Failed getting option chain for %s: %s", symbol, error)
+                retries = retries - 1
+                time.sleep(2)
             data = response.json()
             try:
                 if data["status"]:
