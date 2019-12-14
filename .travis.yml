@@ -1,0 +1,8 @@
+language: python
+install:
+  - pip install pylint
+  - pip install requests
+script: 
+  - pylint *.py
+  - python test_options_data_downloader.py
+  

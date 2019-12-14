@@ -13,8 +13,6 @@ import requests
 # External dependencies
 
 # Application-specific imports
-from tokens import API_KEY
-
 
 # Constants
 DB_URL = "./options-data.sqlite"
@@ -96,7 +94,7 @@ class OptionsDataDownloader:
                 response = self.session.get(
                     TOS_OPTION_CHAIN_API_URL
                     + "?apikey="
-                    + API_KEY
+                    + os.environ.get("TOS_API_KEY")
                     + "&symbol="
                     + symbol
                     + "&strikeCount=512&includeQuotes=TRUE",
