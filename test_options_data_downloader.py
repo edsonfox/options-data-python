@@ -3,6 +3,7 @@
 # Standard libraries
 import unittest
 from unittest import mock
+import os
 from requests import Session
 
 # External dependencies
@@ -30,6 +31,7 @@ def mocked_session_get(*args, **kwargs):  # pylint: disable=W0613
 
 class TestOptionsDataDownloader(unittest.TestCase):
     @mock.patch.object(Session, "get", side_effect=mocked_session_get)
+    @mock.patch.dict(os.environ, {"TOS_API_KEY": "dUmmYkEy"})
     def test_fetch(self, mock_get):
         downloader = OptionsDataDownloader()
         json_data = downloader.get_option_chain_data("TSLA")
