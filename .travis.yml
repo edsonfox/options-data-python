@@ -1,6 +1,7 @@
 language: python
 install:
   - pip install pylint
+  - pip install pymongo
   - pip install requests
 script: 
   - pylint *.py

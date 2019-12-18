@@ -3,7 +3,6 @@
 # Standard libraries
 import pickle
 from datetime import datetime
-import sqlite3
 import logging
 import os
 import time
@@ -11,11 +10,12 @@ from typing import Dict, List
 import requests
 
 # External dependencies
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import DuplicateKeyError
 
 # Application-specific imports
 
 # Constants
-DB_URL = "./options-data.sqlite"
 TOS_OPTION_CHAIN_API_URL = "https://api.tdameritrade.com/v1/marketdata/chains"
 CBOE_SYMBOLS_URL = (
     "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
@@ -27,67 +27,63 @@ class OptionsDataDownloader:
 
     def __init__(self):
         self.session = requests.session()
-        self.db_connection = sqlite3.connect(DB_URL)
-        self.db_cursor = self.db_connection.cursor()
+        self.db_handle = None
 
-    def get_and_store_data(self, symbols: List, from_pickle: bool = False):
+    def connect_and_initialize_db(self):
+        client = MongoClient()
+        self.db_handle = client.options
+        self.db_handle.options_data.create_index(
+            [("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True
+        )
+
+    def get_and_pickle_data(self, symbols: List):
+        today_str = datetime.now().strftime("%Y%m%d")
+        try:
+            os.mkdir(today_str)
+        except FileExistsError:
+            logging.info("%s directory already exists", today_str)
         for symbol in symbols:
-            today_str = datetime.now().strftime("%Y%m%d")
-            if from_pickle:
-                with open(symbol + "_" + today_str + "_data.pkl", "rb") as p_data:
-                    data = pickle.load(p_data)
-            else:
-                if [i for i in os.listdir(".") if i.startswith(symbol + "_")]:
-                    logging.warning("%s already present, skipping", symbol)
-                    continue
-                data = self.get_option_chain_data(symbol)
-                if data["status"] == "FAILED":
-                    logging.warning("%s FAILED!", symbol)
-                    continue
-                with open(symbol + "_" + today_str + "_data.pkl", "wb") as p_data:
-                    pickle.dump(data, p_data)
+            if [i for i in os.listdir(today_str) if i.startswith(symbol + "_")]:
+                logging.warning("%s already present, skipping", symbol)
+                continue
+            data = self.get_option_chain_from_broker(symbol)
+            if data["status"] == "FAILED":
+                logging.warning("%s FAILED!", symbol)
+                continue
+            with open(
+                today_str + "/" + symbol + "_" + today_str + "_data.pkl", "wb"
+            ) as p_data:
+                pickle.dump(data, p_data)
 
-            for option_type in ("putExpDateMap", "callExpDateMap"):
-                for date_str in data[option_type]:
-                    date = datetime.strptime(date_str.split(":")[0], "%Y-%m-%d")
-                    for strike_str in data[option_type][date_str]:
-                        for entry in data[option_type][date_str][strike_str]:
-                            type_char = "C" if option_type == "callExpDateMap" else "P"
-                            option_symbol = (
-                                symbol
-                                + date.strftime("%y%m%d")
-                                + type_char
-                                + "{:09.3f}".format(float(strike_str)).replace(".", "")
-                            )  # e.g.: NVDA190301C00085000
-                            query_values = (
-                                symbol,
-                                data["underlying"]["last"],
-                                entry["exchangeName"],
-                                option_symbol,
-                                "",
-                                "call" if option_type == "callExpDateMap" else "put",
-                                date.strftime("%m/%d/%Y"),
-                                datetime.now().strftime("%m/%d/%Y"),
-                                strike_str,
-                                entry["last"],
-                                entry["bid"],
-                                entry["ask"],
-                                entry["totalVolume"],
-                                entry["openInterest"],
-                                entry["volatility"],
-                                entry["delta"],
-                                entry["gamma"],
-                                entry["theta"],
-                                entry["vega"],
-                                option_symbol,
-                            )
-                            self.db_cursor.execute(
-                                "INSERT INTO OptionsData VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                query_values,
-                            )
-            self.db_connection.commit()
+    def pickle_to_db(self, folder=None):
+        self.connect_and_initialize_db()
+        folder = datetime.now().strftime("%Y%m%d") if folder is None else folder
+        number_of_docs_before = self.db_handle.options_data.count_documents({})
+        pkls = [i for i in os.listdir(folder) if i.endswith(".pkl")]
+        for pkl_file in pkls:
+            with open(folder + "/" + pkl_file, "rb") as p_data:
+                data = pickle.load(p_data)
+            data["dataDate"] = pkl_file.split("_")[1]
+            data = replace_dots_in_keys(data)
+            try:
+                insert_result = self.db_handle.options_data.insert_one(data)
+            except DuplicateKeyError:
+                logging.warning(
+                    "Document for %s from %s already exists in DB",
+                    data["symbol"],
+                    data["dataDate"],
+                )
+                continue
+            logging.info(
+                "Inserted %s with id %s", data["symbol"], insert_result.inserted_id
+            )
+        number_of_docs_after = self.db_handle.options_data.count_documents({})
+        logging.info(
+            "Inserted %s new documents to DB",
+            number_of_docs_after - number_of_docs_before,
+        )
 
-    def get_option_chain_data(self, symbol: str) -> Dict:
+    def get_option_chain_from_broker(self, symbol: str) -> Dict:
         retries = 60
         while retries:
             try:
@@ -134,12 +130,23 @@ def get_symbols() -> List[str]:
     return symbols
 
 
+def replace_dots_in_keys(dictionary: Dict) -> Dict:
+    new_dict = {}
+    for key, value in dictionary.items():
+        if isinstance(value, Dict):
+            value = replace_dots_in_keys(value)
+        new_dict[key.replace(".", ",")] = value
+    return new_dict
+
+
 def main():
-    symbols = get_symbols()
+    logging.getLogger().setLevel(logging.INFO)
     options_data_downloader = OptionsDataDownloader()
-    options_data_downloader.get_and_store_data(symbols)
+    symbols = get_symbols()
+    options_data_downloader.get_and_pickle_data(symbols)
     # Do it again in case some symbols weren't downloaded
-    options_data_downloader.get_and_store_data(symbols)
+    options_data_downloader.get_and_pickle_data(symbols)
+    options_data_downloader.pickle_to_db()
 
 
 if __name__ == "__main__":
