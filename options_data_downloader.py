@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from typing import Dict, List
+from json.decoder import JSONDecodeError
 import requests
 
 # External dependencies
@@ -83,8 +84,7 @@ class OptionsDataDownloader:
             number_of_docs_after - number_of_docs_before,
         )
 
-    def get_option_chain_from_broker(self, symbol: str) -> Dict:
-        retries = 60
+    def get_option_chain_from_broker(self, symbol: str, retries: int = 60) -> Dict:
         while retries:
             try:
                 response = self.session.get(
@@ -100,15 +100,23 @@ class OptionsDataDownloader:
                 logging.error("Failed getting option chain for %s: %s", symbol, error)
                 retries = retries - 1
                 time.sleep(2)
-            data = response.json()
+                continue
             try:
-                if data["status"]:
-                    return data
-            except KeyError:
-                if data["error"]:
-                    logging.warning(data["error"])
-                    retries = retries - 1
-                    time.sleep(2)
+                data = response.json()
+            except JSONDecodeError as error:
+                logging.error("Failed to get JSON from %s response: %s", symbol, error)
+                retries = retries - 1
+                time.sleep(2)
+                continue
+            if "status" in data.keys():
+                return data
+            if "error" in data.keys():
+                logging.warning(data["error"])
+            else:
+                logging.warning("Data has no status or error: %s", data)
+            retries = retries - 1
+            time.sleep(2)
+        return {}
 
 
 def get_symbols() -> List[str]:
