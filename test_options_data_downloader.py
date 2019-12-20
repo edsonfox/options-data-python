@@ -28,6 +28,8 @@ def mocked_session_get(*args, **kwargs):  # pylint: disable=W0613
         def status(self):
             return self.status_code
 
+    if "NO_STATUS_NO_ERROR" in args[0]:
+        return MockResponse({"weird": "dict"}, 200)
     if args[0].startswith(TOS_OPTION_CHAIN_API_URL):
         return MockResponse({"status": "PASSED"}, 200)
     return MockResponse(None, 404)
@@ -40,6 +42,20 @@ class TestOptionsDataDownloader(unittest.TestCase):
         downloader = OptionsDataDownloader()
         json_data = downloader.get_option_chain_from_broker("TSLA")
         self.assertEqual(json_data, {"status": "PASSED"})
+        self.assertEqual(len(mock_get.call_args_list), 1)
+
+    @mock.patch.object(Session, "get", side_effect=mocked_session_get)
+    @mock.patch.dict(os.environ, {"TOS_API_KEY": "dUmmYkEy"})
+    def test_get_option_chain_from_broker_with_no_status_or_error(self, mock_get):
+        with self.assertLogs() as logs:
+            downloader = OptionsDataDownloader()
+            json_data = downloader.get_option_chain_from_broker(
+                "NO_STATUS_NO_ERROR", retries=1
+            )
+        self.assertEqual(
+            logs.output, ["WARNING:root:Data has no status or error: {'weird': 'dict'}"]
+        )
+        self.assertEqual(json_data, {})
         self.assertEqual(len(mock_get.call_args_list), 1)
 
     def test_replace_dots_in_keys(self):
