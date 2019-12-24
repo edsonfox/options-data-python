@@ -9,6 +9,7 @@ import time
 from typing import Dict, List
 from json.decoder import JSONDecodeError
 import requests
+from requests.exceptions import ReadTimeout
 
 # External dependencies
 from pymongo import MongoClient, ASCENDING
@@ -96,7 +97,7 @@ class OptionsDataDownloader:
                     + "&strikeCount=512&includeQuotes=TRUE",
                     timeout=32,
                 )
-            except ConnectionError as error:
+            except (ConnectionError, ConnectionResetError, ReadTimeout) as error:
                 logging.error("Failed getting option chain for %s: %s", symbol, error)
                 retries = retries - 1
                 time.sleep(2)
