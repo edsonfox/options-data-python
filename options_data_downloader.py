@@ -32,13 +32,15 @@ class OptionsDataDownloader:
         self.db_handle = None
 
     def connect_and_initialize_db(self):
-        client = MongoClient()
-        self.db_handle = client.options
-        self.db_handle.options_data.create_index(
-            [("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True
-        )
+        if not self.db_handle:
+            client = MongoClient()
+            self.db_handle = client.options
+            self.db_handle.options_data.create_index(
+                [("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True
+            )
 
-    def get_and_pickle_data(self, symbols: List):
+    def get_and_pickle_data(self, symbols: List) -> List[str]:
+        failed_symbols = []
         today_str = datetime.now().strftime("%Y%m%d")
         try:
             os.mkdir(today_str)
@@ -46,16 +48,18 @@ class OptionsDataDownloader:
             logging.info("%s directory already exists", today_str)
         for symbol in symbols:
             if [i for i in os.listdir(today_str) if i.startswith(symbol + "_")]:
-                logging.warning("%s already present, skipping", symbol)
+                logging.info("%s already present, skipping", symbol)
                 continue
             data = self.get_option_chain_from_broker(symbol)
             if data["status"] == "FAILED":
-                logging.warning("%s FAILED!", symbol)
+                logging.info("%s FAILED!", symbol)
+                failed_symbols.append(symbol)
                 continue
             with open(
                 today_str + "/" + symbol + "_" + today_str + "_data.pkl", "wb"
             ) as p_data:
                 pickle.dump(data, p_data)
+        return failed_symbols
 
     def pickle_to_db(self, folder=None):
         self.connect_and_initialize_db()
@@ -70,7 +74,7 @@ class OptionsDataDownloader:
             try:
                 insert_result = self.db_handle.options_data.insert_one(data)
             except DuplicateKeyError:
-                logging.warning(
+                logging.info(
                     "Document for %s from %s already exists in DB",
                     data["symbol"],
                     data["dataDate"],
@@ -112,15 +116,21 @@ class OptionsDataDownloader:
             if "status" in data.keys():
                 return data
             if "error" in data.keys():
-                logging.warning(data["error"])
+                logging.info(data["error"])
             else:
                 logging.warning("Data has no status or error: %s", data)
             retries = retries - 1
             time.sleep(2)
         return {}
 
+    def get_symbols_in_db(self) -> List[str]:
+        self.connect_and_initialize_db()
+        symbols_in_db = self.db_handle.options_data.distinct("symbol")
+        logging.debug("Found %s symbols in DB: %s", len(symbols_in_db), symbols_in_db)
+        return symbols_in_db
 
-def get_symbols() -> List[str]:
+
+def get_cboe_symbols() -> List[str]:
     rows = requests.get(CBOE_SYMBOLS_URL).text.splitlines()
     symbols = []
     for row in rows:
@@ -133,7 +143,7 @@ def get_symbols() -> List[str]:
             symbols.append(symbol_candidate)
     symbols = list(set(symbols))
     symbols.sort()
-    logging.info("Got %s symbols", len(symbols))
+    logging.info("Got %s symbols from CBOE", len(symbols))
     if len(symbols) < 9000:
         raise "Too few symbols. You should check what's going on"
     return symbols
@@ -151,10 +161,12 @@ def replace_dots_in_keys(dictionary: Dict) -> Dict:
 def main():
     logging.getLogger().setLevel(logging.INFO)
     options_data_downloader = OptionsDataDownloader()
-    symbols = get_symbols()
-    options_data_downloader.get_and_pickle_data(symbols)
-    # Do it again in case some symbols weren't downloaded
-    options_data_downloader.get_and_pickle_data(symbols)
+    options_data_downloader.get_and_pickle_data(get_cboe_symbols())
+    symbols = options_data_downloader.get_symbols_in_db()
+    for try_num in range(32):
+        logging.info("Trial number %s", try_num)
+        symbols = options_data_downloader.get_and_pickle_data(symbols)
+        logging.info("Got %s failing symbols: %s", len(symbols), symbols)
     options_data_downloader.pickle_to_db()
 
 
