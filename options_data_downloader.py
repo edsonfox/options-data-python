@@ -8,6 +8,7 @@ import os
 import time
 from typing import Dict, List
 from json.decoder import JSONDecodeError
+import csv
 import requests
 from requests.exceptions import ReadTimeout
 
@@ -64,7 +65,7 @@ class OptionsDataDownloader:
     def pickle_to_db(self, folder=None):
         self.connect_and_initialize_db()
         folder = datetime.now().strftime("%Y%m%d") if folder is None else folder
-        number_of_docs_before = self.db_handle.options_data.count_documents({})
+        number_of_docs_before = self.db_handle.options_data.estimated_document_count()
         pkls = [i for i in os.listdir(folder) if i.endswith(".pkl")]
         for pkl_file in pkls:
             with open(folder + "/" + pkl_file, "rb") as p_data:
@@ -83,10 +84,51 @@ class OptionsDataDownloader:
             logging.info(
                 "Inserted %s with id %s", data["symbol"], insert_result.inserted_id
             )
-        number_of_docs_after = self.db_handle.options_data.count_documents({})
+        number_of_docs_after = self.db_handle.options_data.estimated_document_count()
         logging.info(
             "Inserted %s new documents to DB",
             number_of_docs_after - number_of_docs_before,
+        )
+
+    def csv_to_db(self, csv_path):
+        self.connect_and_initialize_db()
+        number_of_docs_before = self.db_handle.options_data.estimated_document_count()
+        with open(csv_path) as csv_file:
+            reader = csv.DictReader(csv_file)
+            inserted_symbols = {}
+            num_rows = 0
+            for row in reader:
+                num_rows = num_rows + 1
+                try:
+                    inserted_symbols[row["UnderlyingSymbol"]].append(row)
+                except KeyError:
+                    inserted_symbols[row["UnderlyingSymbol"]] = [row]
+            for symbol in inserted_symbols:
+                data = {}
+                data["symbol"] = symbol
+                data_date = datetime.strptime(
+                    inserted_symbols[symbol][0]["DataDate"], "%m/%d/%Y"
+                )
+                data["dataDate"] = data_date.strftime("%Y%m%d")
+                data["chain"] = inserted_symbols[symbol]
+                try:
+                    insert_result = self.db_handle.options_data.insert_one(data)
+                    logging.info(
+                        "Inserted %s with id %s",
+                        data["symbol"],
+                        insert_result.inserted_id,
+                    )
+                except DuplicateKeyError:
+                    logging.info(
+                        "Document for %s from %s already exists in DB",
+                        data["symbol"],
+                        data["dataDate"],
+                    )
+        number_of_docs_after = self.db_handle.options_data.estimated_document_count()
+        logging.info(
+            "Inserted %s new dowcuments from %s CSV rows",
+            number_of_docs_after - number_of_docs_before,
+            num_rows,
         )
 
     def get_option_chain_from_broker(self, symbol: str, retries: int = 60) -> Dict:
