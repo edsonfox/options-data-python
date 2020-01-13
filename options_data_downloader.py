@@ -23,6 +23,60 @@ TOS_OPTION_CHAIN_API_URL = "https://api.tdameritrade.com/v1/marketdata/chains"
 CBOE_SYMBOLS_URL = (
     "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
 )
+MANDATORY_SYMBOLS = [
+    "AZO",
+    "AMZN",
+    "BKNG",
+    "BKX",
+    "CELG",
+    "CMG",
+    "DIA",
+    "DJX",
+    "GLD",
+    "GOOG",
+    "GOOGL",
+    "HGX",
+    "IWM",
+    "MXEA",
+    "MXEF",
+    "NDX",
+    "NFLX",
+    "OEX",
+    "OSX",
+    "QQQ",
+    "RLG",
+    "RLV",
+    "RUI",
+    "RUT",
+    "SCOM",
+    "SIXB",
+    "SIXI",
+    "SIXM",
+    "SIXRE",
+    "SIXU",
+    "SIXV",
+    "SIXY",
+    "SOX",
+    "SPIKE",
+    "SPY",
+    "SPX",
+    "TSLA",
+    "UCOM",
+    "UTY",
+    "VIA",
+    "VIAB",
+    "VIX",
+    "XAU",
+    "XDA",
+    "XDB",
+    "XDC",
+    "XDE",
+    "XDN",
+    "XDS",
+    "XDZ",
+    "XEO",
+    "XSP",
+]
 
 
 class OptionsDataDownloader:
@@ -81,7 +135,7 @@ class OptionsDataDownloader:
                     data["dataDate"],
                 )
                 continue
-            logging.info(
+            logging.debug(
                 "Inserted %s with id %s", data["symbol"], insert_result.inserted_id
             )
         number_of_docs_after = self.db_handle.options_data.estimated_document_count()
@@ -209,6 +263,15 @@ def main():
         logging.info("Trial number %s", try_num)
         symbols = options_data_downloader.get_and_pickle_data(symbols)
         logging.info("Got %s failing symbols: %s", len(symbols), symbols)
+    symbols = MANDATORY_SYMBOLS
+    for try_num in range(32):
+        logging.info("Mandatory symbols: Trial number %s", try_num)
+        symbols = options_data_downloader.get_and_pickle_data(symbols)
+        logging.info("Got %s failing symbols: %s", len(symbols), symbols)
+    if symbols:
+        logging.error("**************************************************")
+        logging.error("COULD NOT GET THESE MANDATORY SYMBOLS: %s", symbols)
+        logging.error("**************************************************")
     options_data_downloader.pickle_to_db()
 
 
