@@ -24,21 +24,22 @@ CBOE_SYMBOLS_URL = (
     "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
 )
 MANDATORY_SYMBOLS = [
+    "AAPL",
     "AZO",
     "AMZN",
     "BKNG",
     "BKX",
-    "CELG",
+    "BYND",
     "CMG",
     "DIA",
+    "DIS",
     "DJX",
+    "EEM",
     "GLD",
     "GOOG",
     "GOOGL",
     "HGX",
     "IWM",
-    "MXEA",
-    "MXEF",
     "NDX",
     "NFLX",
     "OEX",
@@ -48,7 +49,6 @@ MANDATORY_SYMBOLS = [
     "RLV",
     "RUI",
     "RUT",
-    "SCOM",
     "SIXB",
     "SIXI",
     "SIXM",
@@ -57,14 +57,13 @@ MANDATORY_SYMBOLS = [
     "SIXV",
     "SIXY",
     "SOX",
-    "SPIKE",
     "SPY",
     "SPX",
+    "TLT",
     "TSLA",
-    "UCOM",
     "UTY",
-    "VIA",
-    "VIAB",
+    "VIAC",
+    "VIACA",
     "VIX",
     "XAU",
     "XDA",
@@ -75,6 +74,7 @@ MANDATORY_SYMBOLS = [
     "XDS",
     "XDZ",
     "XEO",
+    "XLE",
     "XSP",
 ]
 
@@ -106,6 +106,9 @@ class OptionsDataDownloader:
                 logging.info("%s already present, skipping", symbol)
                 continue
             data = self.get_option_chain_from_broker(symbol)
+            if data["status"] == "FAILED":
+                logging.debug("Trying $%s.X", symbol)
+                data = self.get_option_chain_from_broker("$" + symbol + ".X")
             if data["status"] == "FAILED":
                 logging.info("%s FAILED!", symbol)
                 failed_symbols.append(symbol)
@@ -259,12 +262,12 @@ def main():
     options_data_downloader = OptionsDataDownloader()
     options_data_downloader.get_and_pickle_data(get_cboe_symbols())
     symbols = options_data_downloader.get_symbols_in_db()
-    for try_num in range(32):
+    for try_num in range(8):
         logging.info("Trial number %s", try_num)
         symbols = options_data_downloader.get_and_pickle_data(symbols)
         logging.info("Got %s failing symbols: %s", len(symbols), symbols)
     symbols = MANDATORY_SYMBOLS
-    for try_num in range(32):
+    for try_num in range(8):
         logging.info("Mandatory symbols: Trial number %s", try_num)
         symbols = options_data_downloader.get_and_pickle_data(symbols)
         logging.info("Got %s failing symbols: %s", len(symbols), symbols)
