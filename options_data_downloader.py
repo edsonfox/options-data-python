@@ -11,6 +11,7 @@ from json.decoder import JSONDecodeError
 import csv
 import requests
 from requests.exceptions import ReadTimeout
+from urllib3.exceptions import ProtocolError
 
 # External dependencies
 from pymongo import MongoClient, ASCENDING
@@ -200,7 +201,12 @@ class OptionsDataDownloader:
                     + "&strikeCount=512&includeQuotes=TRUE",
                     timeout=32,
                 )
-            except (ConnectionError, ConnectionResetError, ReadTimeout) as error:
+            except (
+                ConnectionError,
+                ConnectionResetError,
+                ReadTimeout,
+                ProtocolError,
+            ) as error:
                 logging.error("Failed getting option chain for %s: %s", symbol, error)
                 retries = retries - 1
                 time.sleep(2)
@@ -262,7 +268,7 @@ def main():
     options_data_downloader = OptionsDataDownloader()
     options_data_downloader.get_and_pickle_data(get_cboe_symbols())
     symbols = options_data_downloader.get_symbols_in_db()
-    for try_num in range(8):
+    for try_num in range(4):
         logging.info("Trial number %s", try_num)
         symbols = options_data_downloader.get_and_pickle_data(symbols)
         logging.info("Got %s failing symbols: %s", len(symbols), symbols)
