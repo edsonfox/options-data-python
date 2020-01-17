@@ -201,13 +201,15 @@ class OptionsDataDownloader:
                     + "&strikeCount=512&includeQuotes=TRUE",
                     timeout=32,
                 )
-            except (
-                ConnectionError,
-                ConnectionResetError,
-                ReadTimeout,
-                ProtocolError,
-            ) as error:
-                logging.error("Failed getting option chain for %s: %s", symbol, error)
+            except (ConnectionError, ReadTimeout) as error:
+                try:
+                    logging.error(
+                        "Failed getting option chain for %s: %s", symbol, error
+                    )
+                except (ProtocolError) as p_error:
+                    logging.error(
+                        "Failed getting option chain for %s: %s", symbol, p_error
+                    )
                 retries = retries - 1
                 time.sleep(2)
                 continue
