@@ -206,10 +206,15 @@ class OptionsDataDownloader:
                     logging.error(
                         "Failed getting option chain for %s: %s", symbol, error
                     )
-                except (ProtocolError) as p_error:
-                    logging.error(
-                        "Failed getting option chain for %s: %s", symbol, p_error
-                    )
+                except ProtocolError as p_error:
+                    try:
+                        logging.error(
+                            "Failed getting option chain for %s: %s", symbol, p_error
+                        )
+                    except requests.exceptions.RequestException as r_error:
+                        logging.error(
+                            "Failed getting option chain for %s: %s", symbol, r_error
+                        )
                 retries = retries - 1
                 time.sleep(2)
                 continue
