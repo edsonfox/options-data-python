@@ -148,19 +148,30 @@ class OptionsDataDownloader:
             number_of_docs_after - number_of_docs_before,
         )
 
-    def csv_to_db(self, csv_path):
+    def csv_folder_to_db(self, folder_prefix, symbols=None):
+        folders = [x for x in os.listdir() if x.startswith(folder_prefix)]
+        for folder in folders:
+            files = [x for x in os.listdir(folder) if x.startswith("L2_options_")]
+            for file in files:
+                path = "/".join([os.getcwd(), folder, file])
+                self.csv_to_db(path, symbols)
+
+    def csv_to_db(self, csv_path, symbols=None):
         self.connect_and_initialize_db()
         number_of_docs_before = self.db_handle.options_data.estimated_document_count()
         with open(csv_path) as csv_file:
+            logging.info("Now processing %s", csv_path)
             reader = csv.DictReader(csv_file)
             inserted_symbols = {}
             num_rows = 0
             for row in reader:
-                num_rows = num_rows + 1
-                try:
-                    inserted_symbols[row["UnderlyingSymbol"]].append(row)
-                except KeyError:
-                    inserted_symbols[row["UnderlyingSymbol"]] = [row]
+                current_symbol = row["UnderlyingSymbol"]
+                if symbols is None or current_symbol in symbols:
+                    num_rows = num_rows + 1
+                    try:
+                        inserted_symbols[current_symbol].append(row)
+                    except KeyError:
+                        inserted_symbols[current_symbol] = [row]
             for symbol in inserted_symbols:
                 data = {}
                 data["symbol"] = symbol
