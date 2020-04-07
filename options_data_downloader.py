@@ -196,7 +196,6 @@ MANDATORY_SYMBOLS = [
     "RLV",
     "ROP",
     "ROST",
-    "RTN",
     "RUI",
     "RUT",
     "SBUX",
@@ -234,7 +233,6 @@ MANDATORY_SYMBOLS = [
     "UPS",
     "USB",
     "USO",
-    "UTX",
     "UTY",
     "V",
     "VFC",
@@ -341,12 +339,15 @@ class OptionsDataDownloader:
             number_of_docs_after - number_of_docs_before,
         )
 
-    def csv_folder_to_db(self, folder_prefix, symbols=None):
-        folders = [x for x in os.listdir() if x.startswith(folder_prefix)]
+    def csv_folder_to_db(self, folder_prefix, symbols=None, starting_path: str = ""):
+        folders = [x for x in os.listdir(starting_path) if x.startswith(folder_prefix)]
         for folder in folders:
-            files = [x for x in os.listdir(folder) if x.startswith("L2_options_")]
+            path = starting_path + "/" + folder if starting_path else folder
+            files = [x for x in os.listdir(path) if x.startswith("L2_options_")]
             for file in files:
-                path = "/".join([os.getcwd(), folder, file])
+                path = "/".join(
+                    [starting_path if starting_path else os.getcwd(), folder, file]
+                )
                 self.csv_to_db(path, symbols)
 
     def csv_to_db(self, csv_path, symbols=None):
@@ -415,7 +416,10 @@ class OptionsDataDownloader:
                         logging.error(
                             "Failed getting option chain for %s: %s", symbol, p_error
                         )
-                    except requests.exceptions.RequestException as r_error:
+                    except (
+                        requests.exceptions.RequestException,
+                        requests.exceptions.ConnectionError,
+                    ) as r_error:
                         logging.error(
                             "Failed getting option chain for %s: %s", symbol, r_error
                         )
