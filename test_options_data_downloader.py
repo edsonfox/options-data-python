@@ -49,12 +49,8 @@ class TestOptionsDataDownloader(unittest.TestCase):
     def test_get_option_chain_from_broker_with_no_status_or_error(self, mock_get):
         with self.assertLogs() as logs:
             downloader = OptionsDataDownloader()
-            json_data = downloader.get_option_chain_from_broker(
-                "NO_STATUS_NO_ERROR", retries=1
-            )
-        self.assertEqual(
-            logs.output, ["WARNING:root:Data has no status or error: {'weird': 'dict'}"]
-        )
+            json_data = downloader.get_option_chain_from_broker("NO_STATUS_NO_ERROR", retries=1)
+        self.assertEqual(logs.output, ["WARNING:root:Data has no status or error: {'weird': 'dict'}"])
         self.assertEqual(json_data, {})
         self.assertEqual(len(mock_get.call_args_list), 1)
 
