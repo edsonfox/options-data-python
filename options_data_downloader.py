@@ -21,9 +21,7 @@ from pymongo.errors import DuplicateKeyError
 
 # Constants
 TOS_OPTION_CHAIN_API_URL = "https://api.tdameritrade.com/v1/marketdata/chains"
-CBOE_SYMBOLS_URL = (
-    "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
-)
+CBOE_SYMBOLS_URL = "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
 MANDATORY_SYMBOLS = [
     "A",
     "AAPL",
@@ -282,9 +280,7 @@ class OptionsDataDownloader:
         if not self.db_handle:
             client = MongoClient()
             self.db_handle = client.options
-            self.db_handle.options_data.create_index(
-                [("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True
-            )
+            self.db_handle.options_data.create_index([("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True)
 
     def get_and_pickle_data(self, symbols: List) -> List[str]:
         failed_symbols = []
@@ -305,9 +301,7 @@ class OptionsDataDownloader:
                 logging.info("%s FAILED!", symbol)
                 failed_symbols.append(symbol)
                 continue
-            with open(
-                today_str + "/" + symbol + "_" + today_str + "_data.pkl", "wb"
-            ) as p_data:
+            with open(today_str + "/" + symbol + "_" + today_str + "_data.pkl", "wb") as p_data:
                 pickle.dump(data, p_data)
         return failed_symbols
 
@@ -325,18 +319,13 @@ class OptionsDataDownloader:
                 insert_result = self.db_handle.options_data.insert_one(data)
             except DuplicateKeyError:
                 logging.info(
-                    "Document for %s from %s already exists in DB",
-                    data["symbol"],
-                    data["dataDate"],
+                    "Document for %s from %s already exists in DB", data["symbol"], data["dataDate"],
                 )
                 continue
-            logging.debug(
-                "Inserted %s with id %s", data["symbol"], insert_result.inserted_id
-            )
+            logging.debug("Inserted %s with id %s", data["symbol"], insert_result.inserted_id)
         number_of_docs_after = self.db_handle.options_data.estimated_document_count()
         logging.info(
-            "Inserted %s new documents to DB",
-            number_of_docs_after - number_of_docs_before,
+            "Inserted %s new documents to DB", number_of_docs_after - number_of_docs_before,
         )
 
     def csv_folder_to_db(self, folder_prefix, symbols=None, starting_path: str = ""):
@@ -345,9 +334,7 @@ class OptionsDataDownloader:
             path = starting_path + "/" + folder if starting_path else folder
             files = [x for x in os.listdir(path) if x.startswith("L2_options_")]
             for file in files:
-                path = "/".join(
-                    [starting_path if starting_path else os.getcwd(), folder, file]
-                )
+                path = "/".join([starting_path if starting_path else os.getcwd(), folder, file])
                 self.csv_to_db(path, symbols)
 
     def csv_to_db(self, csv_path, symbols=None):
@@ -369,29 +356,21 @@ class OptionsDataDownloader:
             for symbol in inserted_symbols:
                 data = {}
                 data["symbol"] = symbol
-                data_date = datetime.strptime(
-                    inserted_symbols[symbol][0]["DataDate"], "%m/%d/%Y"
-                )
+                data_date = datetime.strptime(inserted_symbols[symbol][0]["DataDate"], "%m/%d/%Y")
                 data["dataDate"] = data_date.strftime("%Y%m%d")
                 data["chain"] = inserted_symbols[symbol]
                 try:
                     insert_result = self.db_handle.options_data.insert_one(data)
                     logging.info(
-                        "Inserted %s with id %s",
-                        data["symbol"],
-                        insert_result.inserted_id,
+                        "Inserted %s with id %s", data["symbol"], insert_result.inserted_id,
                     )
                 except DuplicateKeyError:
                     logging.info(
-                        "Document for %s from %s already exists in DB",
-                        data["symbol"],
-                        data["dataDate"],
+                        "Document for %s from %s already exists in DB", data["symbol"], data["dataDate"],
                     )
         number_of_docs_after = self.db_handle.options_data.estimated_document_count()
         logging.info(
-            "Inserted %s new dowcuments from %s CSV rows",
-            number_of_docs_after - number_of_docs_before,
-            num_rows,
+            "Inserted %s new dowcuments from %s CSV rows", number_of_docs_after - number_of_docs_before, num_rows,
         )
 
     def get_option_chain_from_broker(self, symbol: str, retries: int = 60) -> Dict:
@@ -406,23 +385,14 @@ class OptionsDataDownloader:
                     + "&strikeCount=512&includeQuotes=TRUE",
                     timeout=32,
                 )
-            except (ConnectionError, ReadTimeout) as error:
+            except (ConnectionError, ReadTimeout, requests.exceptions.ConnectionError) as error:
                 try:
-                    logging.error(
-                        "Failed getting option chain for %s: %s", symbol, error
-                    )
+                    logging.error("Failed getting option chain for %s: %s", symbol, error)
                 except ProtocolError as p_error:
                     try:
-                        logging.error(
-                            "Failed getting option chain for %s: %s", symbol, p_error
-                        )
-                    except (
-                        requests.exceptions.RequestException,
-                        requests.exceptions.ConnectionError,
-                    ) as r_error:
-                        logging.error(
-                            "Failed getting option chain for %s: %s", symbol, r_error
-                        )
+                        logging.error("Failed getting option chain for %s: %s", symbol, p_error)
+                    except (requests.exceptions.RequestException, requests.exceptions.ConnectionError,) as r_error:
+                        logging.error("Failed getting option chain for %s: %s", symbol, r_error)
                 retries = retries - 1
                 time.sleep(2)
                 continue
