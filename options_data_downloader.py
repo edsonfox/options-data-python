@@ -32,7 +32,6 @@ MANDATORY_SYMBOLS = [
     "ADM",
     "ADP",
     "AFL",
-    "AGN",
     "AIG",
     "ALB",
     "ALL",
@@ -310,23 +309,26 @@ class OptionsDataDownloader:
         folder = datetime.now().strftime("%Y%m%d") if folder is None else folder
         number_of_docs_before = self.db_handle.options_data.estimated_document_count()
         pkls = [i for i in os.listdir(folder) if i.endswith(".pkl")]
+        pkls.sort()
+        total_contracts = 0
+        hod_data_list = []
         for pkl_file in pkls:
             with open(folder + "/" + pkl_file, "rb") as p_data:
-                data = pickle.load(p_data)
-            data["dataDate"] = pkl_file.split("_")[1]
-            data = replace_dots_in_keys(data)
+                tos_data = pickle.load(p_data)
+            total_contracts = total_contracts + tos_data["numberOfContracts"]
+            date_str = pkl_file.split("_")[1]
+            hod_data = tos_to_hod(tos_data, date_str)
+            hod_data_list.append(hod_data)
             try:
-                insert_result = self.db_handle.options_data.insert_one(data)
+                insert_result = self.db_handle.options_data.insert_one(hod_data)
+                logging.debug("Inserted %s with id %s", hod_data["symbol"], insert_result.inserted_id)
             except DuplicateKeyError:
-                logging.info(
-                    "Document for %s from %s already exists in DB", data["symbol"], data["dataDate"],
-                )
+                logging.info("Document for %s from %s already in DB", hod_data["symbol"], hod_data["dataDate"])
                 continue
-            logging.debug("Inserted %s with id %s", data["symbol"], insert_result.inserted_id)
+        hod_data_to_csv(hod_data_list, folder)
+        logging.info("Converted %s contracts from ToS to HoD format", total_contracts)
         number_of_docs_after = self.db_handle.options_data.estimated_document_count()
-        logging.info(
-            "Inserted %s new documents to DB", number_of_docs_after - number_of_docs_before,
-        )
+        logging.info("Inserted %s new documents to DB", number_of_docs_after - number_of_docs_before)
 
     def csv_folder_to_db(self, folder_prefix, symbols=None, starting_path: str = ""):
         folders = [x for x in os.listdir(starting_path) if x.startswith(folder_prefix)]
@@ -420,6 +422,61 @@ class OptionsDataDownloader:
         return symbols_in_db
 
 
+def tos_to_hod(tos_data: dict, date_str: str) -> dict:
+    hod_data = {}
+    if tos_data["symbol"].startswith("$") and tos_data["symbol"].endswith(".X"):
+        symbol = tos_data["symbol"][1:-2]
+    else:
+        symbol = tos_data["symbol"]
+    hod_data["symbol"] = symbol
+    hod_data["dataDate"] = date_str
+    logging.debug("Found %s contracts in ToS for %s", tos_data["numberOfContracts"], symbol)
+    hod_data["chain"] = []
+    underlying_price = tos_data["underlying"]["last"] if tos_data["underlying"] else tos_data["underlyingPrice"]
+    for option_type in ["callExpDateMap", "putExpDateMap"]:
+        for expiration_str, expiration_row in tos_data[option_type].items():
+            expiration = expiration_str.split(":")[0].replace("-", "")
+            for strike, strike_list in expiration_row.items():
+                hod_chain_row = {}
+                hod_chain_row["UnderlyingSymbol"] = symbol
+                hod_chain_row["UnderlyingPrice"] = str(underlying_price)
+                for entry in strike_list:
+                    hod_chain_row["Exchange"] = entry["exchangeName"]
+                    hod_chain_row["OptionSymbol"] = entry["symbol"]
+                    hod_chain_row["OptionExt"] = ""
+                    hod_chain_row["Type"] = "call" if option_type == "callExpDateMap" else "put"
+                    hod_chain_row["Expiration"] = ("/").join([expiration[4:6], expiration[6:8], expiration[0:4]])
+                    hod_chain_row["DataDate"] = ("/").join([date_str[4:6], date_str[6:8], date_str[0:4]])
+                    hod_chain_row["Strike"] = strike
+                    hod_chain_row["Last"] = str(entry["last"])
+                    hod_chain_row["Bid"] = str(entry["bid"])
+                    hod_chain_row["Ask"] = str(entry["ask"])
+                    hod_chain_row["Volume"] = str(entry["totalVolume"])
+                    hod_chain_row["OpenInterest"] = str(entry["openInterest"])
+                    try:
+                        hod_chain_row["IV"] = str(round(entry["volatility"] / 100, 2))
+                    except TypeError:
+                        hod_chain_row["IV"] = "NaN"
+                    hod_chain_row["Delta"] = str(entry["delta"])
+                    hod_chain_row["Gamma"] = str(entry["gamma"])
+                    try:
+                        hod_chain_row["Theta"] = str(round(entry["theta"] * 100, 2))
+                    except TypeError:
+                        hod_chain_row["Theta"] = "NaN"
+                    hod_chain_row["Vega"] = str(round(entry["vega"] * 100, 2))
+                    hod_chain_row["AKA"] = entry["symbol"]
+                    hod_data["chain"].append(hod_chain_row)
+    return hod_data
+
+
+def hod_data_to_csv(hod_data: list, date_str: str):
+    with open("options_" + date_str + ".csv", "w") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        for symbol_data in hod_data:
+            for row in symbol_data["chain"]:
+                csv_writer.writerow(row.values())
+
+
 def get_cboe_symbols() -> List[str]:
     rows = requests.get(CBOE_SYMBOLS_URL).text.splitlines()
     symbols = []
@@ -466,6 +523,7 @@ def main():
         logging.error("**************************************************")
         logging.error("COULD NOT GET THESE MANDATORY SYMBOLS: %s", symbols)
         logging.error("**************************************************")
+    options_data_downloader.pickle_to_db()
 
 
 if __name__ == "__main__":
