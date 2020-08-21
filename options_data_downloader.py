@@ -384,7 +384,7 @@ class OptionsDataDownloader:
                     + os.environ.get("TOS_API_KEY")
                     + "&symbol="
                     + symbol
-                    + "&strikeCount=512&includeQuotes=TRUE",
+                    + "&includeQuotes=TRUE",
                     timeout=32,
                 )
             except (ConnectionError, ReadTimeout, requests.exceptions.ConnectionError) as error:
@@ -408,7 +408,7 @@ class OptionsDataDownloader:
             if "status" in data.keys():
                 return data
             if "error" in data.keys():
-                logging.info(data["error"])
+                logging.info("[%s]: %s", symbol, data["error"])
             else:
                 logging.warning("Data has no status or error: %s", data)
             retries = retries - 1
