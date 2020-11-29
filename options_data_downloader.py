@@ -156,7 +156,6 @@ MANDATORY_SYMBOLS = [
     "MRK",
     "MS",
     "MSFT",
-    "MYL",
     "NDX",
     "NEE",
     "NFLX",
