@@ -202,7 +202,6 @@ MANDATORY_SYMBOLS = [
     "SIXRE",
     "SIXU",
     "SIXV",
-    "SIXY",
     "SKT",
     "SLB",
     "SLV",
