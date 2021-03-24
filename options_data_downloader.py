@@ -21,6 +21,7 @@ from pymongo.errors import DuplicateKeyError
 
 # Constants
 TOS_OPTION_CHAIN_API_URL = "https://api.tdameritrade.com/v1/marketdata/chains"
+TOS_DOWNLOAD_DIR = "/Users/edsonfox/Documents/Trading/Historical_Options_Data/ToS/"
 CBOE_SYMBOLS_URL = "http://markets.cboe.com/us/options/symboldir/equity_index_options/?download=csv"
 MANDATORY_SYMBOLS = [
     "A",
@@ -279,15 +280,16 @@ class OptionsDataDownloader:
             self.db_handle = client.options
             self.db_handle.options_data.create_index([("dataDate", ASCENDING), ("symbol", ASCENDING)], unique=True)
 
-    def get_and_pickle_data(self, symbols: List) -> List[str]:
+    def get_and_pickle_data(self, symbols: List, path: str = "") -> List[str]:
         failed_symbols = []
         today_str = datetime.now().strftime("%Y%m%d")
+        path += today_str
         try:
-            os.mkdir(today_str)
+            os.mkdir(path)
         except FileExistsError:
             logging.info("%s directory already exists", today_str)
         for symbol in symbols:
-            if [i for i in os.listdir(today_str) if i.startswith(symbol + "_")]:
+            if [i for i in os.listdir(path) if i.startswith(symbol + "_")]:
                 logging.info("%s already present, skipping", symbol)
                 continue
             data = self.get_option_chain_from_broker(symbol)
@@ -298,7 +300,7 @@ class OptionsDataDownloader:
                 logging.info("%s FAILED!", symbol)
                 failed_symbols.append(symbol)
                 continue
-            with open(today_str + "/" + symbol + "_" + today_str + "_data.pkl", "wb") as p_data:
+            with open(path + "/" + symbol + "_" + today_str + "_data.pkl", "wb") as p_data:
                 pickle.dump(data, p_data)
         return failed_symbols
 
@@ -419,6 +421,23 @@ class OptionsDataDownloader:
         logging.debug("Found %s symbols in DB: %s", len(symbols_in_db), symbols_in_db)
         return symbols_in_db
 
+    def get_todays_data(self, path: str = ""):
+        symbols = self.get_symbols_in_db()
+        for try_num in range(2):
+            logging.info("Trial number %s", try_num)
+            symbols = self.get_and_pickle_data(symbols, path)
+            logging.info("Got %s failing symbols: %s", len(symbols), symbols)
+        self.get_and_pickle_data(get_cboe_symbols(), path)
+        symbols = MANDATORY_SYMBOLS
+        for try_num in range(8):
+            logging.info("Mandatory symbols: Trial number %s", try_num)
+            symbols = self.get_and_pickle_data(symbols, path)
+            logging.info("Got %s failing symbols: %s", len(symbols), symbols)
+        if symbols:
+            logging.error("**************************************************")
+            logging.error("COULD NOT GET THESE MANDATORY SYMBOLS: %s", symbols)
+            logging.error("**************************************************")
+
 
 def tos_to_hod(tos_data: dict, date_str: str) -> dict:
     hod_data = {}
@@ -506,22 +525,19 @@ def replace_dots_in_keys(dictionary: Dict) -> Dict:
 def main():
     logging.getLogger().setLevel(logging.INFO)
     options_data_downloader = OptionsDataDownloader()
-    symbols = options_data_downloader.get_symbols_in_db()
-    for try_num in range(2):
-        logging.info("Trial number %s", try_num)
-        symbols = options_data_downloader.get_and_pickle_data(symbols)
-        logging.info("Got %s failing symbols: %s", len(symbols), symbols)
-    options_data_downloader.get_and_pickle_data(get_cboe_symbols())
-    symbols = MANDATORY_SYMBOLS
-    for try_num in range(8):
-        logging.info("Mandatory symbols: Trial number %s", try_num)
-        symbols = options_data_downloader.get_and_pickle_data(symbols)
-        logging.info("Got %s failing symbols: %s", len(symbols), symbols)
-    if symbols:
-        logging.error("**************************************************")
-        logging.error("COULD NOT GET THESE MANDATORY SYMBOLS: %s", symbols)
-        logging.error("**************************************************")
-    options_data_downloader.pickle_to_db()
+    while True:
+        if datetime.now().weekday() < 5:
+            today_str = datetime.now().strftime("%Y%m%d")
+            if today_str not in os.listdir(TOS_DOWNLOAD_DIR):
+                if datetime.now().hour > 14:
+                    options_data_downloader.get_todays_data(TOS_DOWNLOAD_DIR)
+                else:
+                    logging.info("Waiting until 3pm")
+            else:
+                logging.info("%s directory already present", today_str)
+        else:
+            logging.info("No trading today")
+        time.sleep(300)
 
 
 if __name__ == "__main__":
